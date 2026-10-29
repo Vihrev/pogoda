@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Плавный небесный градиент Apple Weather -->
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1E6AF4"/>
+      <stop offset="55%" stop-color="#3898FF"/>
+      <stop offset="100%" stop-color="#6EC6FF"/>
+    </linearGradient>
+
+    <!-- Верхний глянцевый блик на фоне -->
+    <linearGradient id="bgGlow" x1="0.5" y1="0" x2="0.5" y2="0.55">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Свечение вокруг солнца -->
+    <radialGradient id="sunAura" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#FFE566" stop-opacity="0.85"/>
+      <stop offset="55%" stop-color="#FFB800" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#FF9900" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Объёмный градиент солнца -->
+    <radialGradient id="sunCore" cx="0.36" cy="0.3" r="0.68">
+      <stop offset="0%" stop-color="#FFF7B2"/>
+      <stop offset="38%" stop-color="#FFDF45"/>
+      <stop offset="78%" stop-color="#FFAE19"/>
+      <stop offset="100%" stop-color="#F28500"/>
+    </radialGradient>
+
+    <!-- Объёмный градиент облака (iOS 3D-стиль) -->
+    <linearGradient id="cloudBody" x1="0.5" y1="0.18" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="68%" stop-color="#F4F9FF"/>
+      <stop offset="100%" stop-color="#D7E7FA"/>
+    </linearGradient>
+
+    <!-- Внутренний объём левой сферы облака -->
+    <radialGradient id="puffLeft" cx="0.4" cy="0.32" r="0.65">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="70%" stop-color="#F3F8FF"/>
+      <stop offset="100%" stop-color="#DAE9FB"/>
+    </radialGradient>
+
+    <!-- Внутренний объём главной сферы облака -->
+    <radialGradient id="puffMain" cx="0.42" cy="0.28" r="0.7">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="65%" stop-color="#F6FAFF"/>
+      <stop offset="100%" stop-color="#DCEBFC"/>
+    </radialGradient>
+
+    <!-- Мягкая тень под облаком -->
+    <filter id="cloudShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="18" stdDeviation="16" flood-color="#0A3977" flood-opacity="0.35"/>
+    </filter>
+
+    <!-- Тень солнца -->
+    <filter id="sunShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#B85D00" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Иконка со скруглением в стиле iOS / Android Adaptive -->
+  <rect width="512" height="512" rx="115" fill="url(#sky)"/>
+  <rect width="512" height="512" rx="115" fill="url(#bgGlow)"/>
+
+  <!-- Мягкое солнечное сияние -->
+  <circle cx="195" cy="195" r="150" fill="url(#sunAura)"/>
+
+  <!-- Солнце -->
+  <circle cx="195" cy="195" r="88" fill="url(#sunCore)" filter="url(#sunShadow)"/>
+  <!-- Блик на солнце -->
+  <ellipse cx="168" cy="162" rx="34" ry="22" transform="rotate(-25 168 162)" fill="#FFFFFF" opacity="0.35"/>
+
+  <!-- Облако (единая гладкая форма + объёмные полусферы сверху) -->
+  <g filter="url(#cloudShadow)">
+    <!-- Основной силуэт облака -->
+    <path d="
+      M 156 388
+      L 368 388
+      A 64 64 0 0 0 432 324
+      A 64 64 0 0 0 375 260
+      A 92 92 0 0 0 202 222
+      A 68 68 0 0 0 112 276
+      A 58 58 0 0 0 98 330
+      A 58 58 0 0 0 156 388
+      Z"
+      fill="url(#cloudBody)"/>
+
+    <!-- Дополнительные объёмные сферы внутри облака (как в оригинальной иконке iOS) -->
+    <circle cx="292" cy="256" r="88" fill="url(#puffMain)"/>
+    <circle cx="176" cy="292" r="64" fill="url(#puffLeft)"/>
+    <circle cx="366" cy="322" r="62" fill="url(#cloudBody)"/>
+
+    <!-- Выравнивающая нижняя часть -->
+    <rect x="148" y="308" width="224" height="80" rx="40" fill="url(#cloudBody)"/>
+
+    <!-- Тонкий верхний глянец облака -->
+    <path d="
+      M 212 228
+      A 86 86 0 0 1 366 254"
+      fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
+  </g>
+</svg>

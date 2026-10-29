@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#2f6fb5">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="application-name" content="Погода">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+<title>Погода</title>
+<link rel="icon" type="image/svg+xml" href="weather-icon.svg">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+    color: #fff; background: linear-gradient(180deg, #2f6fb5 0%, #6aa3d8 100%);
+    transition: background 0.8s;
+  }
+  body.night  { background: linear-gradient(180deg, #0b1026 0%, #2b3a67 100%); }
+  body.cloudy { background: linear-gradient(180deg, #5b6b7d 0%, #9aa7b5 100%); }
+  body.rain   { background: linear-gradient(180deg, #3a4a5c 0%, #66788a 100%); }
+  body.snow   { background: linear-gradient(180deg, #7d8fa6 0%, #b9c6d4 100%); }
+
+  #pages {
+    display: flex; height: calc(100% - 56px); overflow-x: auto; overflow-y: hidden;
+    scroll-snap-type: x mandatory; scrollbar-width: none;
+  }
+  #pages::-webkit-scrollbar { display: none; }
+  .page {
+    flex: 0 0 100%; height: 100%; overflow-y: auto; scroll-snap-align: start;
+    padding: calc(env(safe-area-inset-top) + 30px) 16px 30px;
+  }
+  .inner { max-width: 430px; margin: 0 auto; }
+  .hero { text-align: center; margin: 10px 0 30px; text-shadow: 0 1px 4px rgba(0,0,0,.15); }
+  .city { font-size: 32px; font-weight: 400; }
+  .sub  { font-size: 13px; opacity: .8; text-transform: uppercase; font-weight: 600; }
+  .temp { font-size: 96px; font-weight: 200; line-height: 1; margin-left: 24px; }
+  .desc { font-size: 20px; font-weight: 500; opacity: .9; }
+  .hilo { font-size: 20px; font-weight: 500; }
+  .card {
+    background: rgba(0,0,0,.15); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+    border-radius: 16px; padding: 12px 16px; margin-bottom: 12px;
+  }
+  .card-title {
+    font-size: 12px; text-transform: uppercase; opacity: .65; font-weight: 600;
+    padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,.2); margin-bottom: 10px;
+  }
+  .hourly { display: flex; overflow-x: auto; gap: 22px; scrollbar-width: none; }
+  .hourly::-webkit-scrollbar { display: none; }
+  .hour { display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 40px; font-weight: 500; }
+  .hour .ic { font-size: 24px; }
+  .day {
+    display: grid; grid-template-columns: 72px 30px 36px 1fr 36px; align-items: center;
+    gap: 8px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.15); font-size: 17px; font-weight: 500;
+  }
+  .day:last-child { border-bottom: none; }
+  .day .min { opacity: .6; text-align: right; }
+  .bar { height: 5px; border-radius: 3px; background: rgba(0,0,0,.2); position: relative; }
+  .bar span { position: absolute; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #8fd3f4, #f6d365, #fda085); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid .card { margin: 0; aspect-ratio: 1; display: flex; flex-direction: column; }
+  .grid .card-title { border: none; margin: 0; }
+  .big { font-size: 32px; font-weight: 400; margin-top: 4px; }
+  .note { font-size: 14px; margin-top: auto; opacity: .85; }
+  .updated { text-align: center; font-size: 12px; opacity: .7; margin-top: 16px; }
+  .loading { text-align: center; margin-top: 35vh; font-size: 18px; opacity: .8; }
+
+  .bottom {
+    position: fixed; left: 0; right: 0; bottom: 0; height: 56px; padding-bottom: env(safe-area-inset-bottom);
+    display: flex; align-items: center; justify-content: space-between; padding-inline: 18px;
+    background: rgba(0,0,0,.18); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  }
+  .bottom button { background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; width: 40px; }
+  .dots { display: flex; gap: 7px; }
+  .dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.4); }
+  .dots i.on { background: #fff; }
+  .spin { animation: spin 1s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #list {
+    position: fixed; inset: 0; background: #000; z-index: 10; overflow-y: auto;
+    padding: calc(env(safe-area-inset-top) + 20px) 16px 40px;
+    transform: translateY(100%); transition: transform .35s ease;
+  }
+  #list.open { transform: none; }
+  .list-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .list-head h1 { font-size: 34px; }
+  .list-head button { background: none; border: none; color: #0a84ff; font-size: 17px; cursor: pointer; }
+  .search { position: relative; margin-bottom: 14px; }
+  .search input {
+    width: 100%; padding: 10px 14px; border: none; border-radius: 10px;
+    background: #1c1c1e; color: #fff; font-size: 17px; outline: none;
+  }
+  .results { margin-top: 6px; background: #1c1c1e; border-radius: 10px; overflow: hidden; }
+  .results div { padding: 12px 14px; border-bottom: 1px solid #2c2c2e; cursor: pointer; }
+  .results div:last-child { border-bottom: none; }
+  .results small { opacity: .55; }
+  .geo-btn {
+    width: 100%; padding: 12px; margin-bottom: 14px; border: none; border-radius: 10px;
+    background: #1c1c1e; color: #0a84ff; font-size: 16px; cursor: pointer;
+  }
+  .citem {
+    position: relative; border-radius: 16px; padding: 14px 16px; margin-bottom: 10px; cursor: pointer;
+    display: flex; justify-content: space-between; min-height: 100px;
+    background: linear-gradient(135deg, #2f6fb5, #6aa3d8);
+  }
+  .citem.night  { background: linear-gradient(135deg, #0b1026, #2b3a67); }
+  .citem.cloudy { background: linear-gradient(135deg, #5b6b7d, #9aa7b5); }
+  .citem.rain   { background: linear-gradient(135deg, #3a4a5c, #66788a); }
+  .citem.snow   { background: linear-gradient(135deg, #7d8fa6, #b9c6d4); }
+  .citem .n { font-size: 22px; font-weight: 600; }
+  .citem .t { font-size: 13px; opacity: .85; margin-top: 2px; }
+  .citem .d { position: absolute; bottom: 14px; left: 16px; font-size: 14px; opacity: .9; }
+  .citem .r { text-align: right; }
+  .citem .tt { font-size: 44px; font-weight: 300; line-height: 1; }
+  .citem .hl { position: absolute; bottom: 14px; right: 16px; font-size: 14px; }
+  .del {
+    position: absolute; top: -6px; right: -6px; width: 26px; height: 26px; border-radius: 50%;
+    border: none; background: #ff3b30; color: #fff; font-size: 14px; cursor: pointer; display: none;
+  }
+  #list.edit .del { display: block; }
+  .hint { text-align: center; opacity: .5; font-size: 13px; margin-top: 16px; }
+  .tap { cursor: pointer; }
+  .tap:active { transform: scale(.97); }
+  .tap .more { font-size: 12px; opacity: .6; margin-top: 4px; }
+  .wide-chart { margin-top: 6px; }
+
+  #detail {
+    position: fixed; inset: 0; background: #1c1c1e; z-index: 20; overflow-y: auto;
+    padding: calc(env(safe-area-inset-top) + 16px) 16px 40px;
+    transform: translateY(100%); transition: transform .35s ease;
+  }
+  #detail.open { transform: none; }
+  .dhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .dhead h2 { font-size: 20px; }
+  .dhead button { background: #3a3a3c; border: none; color: #fff; width: 32px; height: 32px; border-radius: 50%; font-size: 16px; cursor: pointer; }
+  .tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-bottom: 16px; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button {
+    flex: 0 0 auto; width: 44px; padding: 6px 0; border: none; border-radius: 22px; background: none;
+    color: #fff; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer;
+  }
+  .tabs small { font-size: 11px; opacity: .6; }
+  .tabs b { font-size: 17px; font-weight: 500; }
+  .tabs button.on { background: #fff; color: #000; }
+  .tabs button.on small { opacity: .8; }
+  .dval { font-size: 34px; font-weight: 500; }
+  .dsub { font-size: 15px; opacity: .65; margin-bottom: 10px; min-height: 20px; }
+  .chart-box { background: #2c2c2e; border-radius: 16px; padding: 12px 8px; touch-action: pan-y; }
+  .chart-box svg { width: 100%; display: block; user-select: none; }
+  .legend { display: flex; gap: 16px; font-size: 13px; opacity: .8; margin: 10px 4px 0; }
+  .legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+  .dcard { background: #2c2c2e; border-radius: 16px; padding: 14px 16px; margin-top: 12px; font-size: 15px; line-height: 1.5; }
+  .dcard h3 { font-size: 13px; text-transform: uppercase; opacity: .6; margin-bottom: 6px; }
+  .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #3a3a3c; }
+  .row:last-child { border-bottom: none; }
+  .row span:last-child { opacity: .75; }
+</style>
+</head>
+<body>
+
+<div id="pages"></div>
+
+<div class="bottom">
+  <button id="refreshBtn" title="Обновить">↻</button>
+  <div class="dots" id="dots"></div>
+  <button id="listBtn" title="Города">☰</button>
+</div>
+
+<div id="list">
+  <div class="list-head">
+    <button id="editBtn">Изменить</button>
+    <button id="closeBtn">Готово</button>
+  </div>
+  <div class="list-head"><h1>Погода</h1></div>
+  <div class="search">
+    <input id="q" placeholder="🔍 Поиск города" autocomplete="off">
+    <div class="results" id="results"></div>
+  </div>
+  <button class="geo-btn" id="geoBtn">📍 Добавить моё местоположение</button>
+  <div id="cityList"></div>
+  <div class="hint">Данные обновляются автоматически каждые 10 минут</div>
+</div>
+
+<div id="detail"></div>
+
+<script>
+const codes = {
+  0:["Ясно","☀️","🌙"],1:["Преимущественно ясно","🌤️","🌙"],2:["Переменная облачность","⛅","☁️"],
+  3:["Пасмурно","☁️","☁️"],45:["Туман","🌫️","🌫️"],48:["Изморозь","🌫️","🌫️"],
+  51:["Морось","🌦️","🌧️"],53:["Морось","🌦️","🌧️"],55:["Сильная морось","🌧️","🌧️"],
+  56:["Ледяная морось","🌧️","🌧️"],57:["Ледяная морось","🌧️","🌧️"],
+  61:["Небольшой дождь","🌦️","🌧️"],63:["Дождь","🌧️","🌧️"],65:["Ливень","🌧️","🌧️"],
+  66:["Ледяной дождь","🌧️","🌧️"],67:["Ледяной дождь","🌧️","🌧️"],
+  71:["Небольшой снег","🌨️","🌨️"],73:["Снег","🌨️","🌨️"],75:["Сильный снег","❄️","❄️"],
+  77:["Снежные зёрна","🌨️","🌨️"],80:["Ливни","🌦️","🌧️"],81:["Ливни","🌧️","🌧️"],
+  82:["Сильные ливни","⛈️","⛈️"],85:["Снегопад","🌨️","🌨️"],86:["Сильный снегопад","❄️","❄️"],
+  95:["Гроза","⛈️","⛈️"],96:["Гроза с градом","⛈️","⛈️"],99:["Гроза с градом","⛈️","⛈️"]
+};
+const info = (c, day = 1) => { const x = codes[c] || ["—","🌡️","🌡️"]; return { text: x[0], icon: day ? x[1] : x[2] }; };
+const DAYS = ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"];
+const r = n => Math.round(n);
+const esc = s => String(s).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+const $ = id => document.getElementById(id);
+const DIRS = ["С","СВ","В","ЮВ","Ю","ЮЗ","З","СЗ"];
+const dirText = deg => DIRS[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
+const mm = hpa => hpa * 0.750062;
+const beaufort = v => v < 0.3 ? "Штиль" : v < 1.6 ? "Тихий" : v < 3.4 ? "Лёгкий" : v < 5.5 ? "Слабый" : v < 8 ? "Умеренный" : v < 10.8 ? "Свежий" : v < 13.9 ? "Сильный" : v < 17.2 ? "Крепкий" : v < 20.8 ? "Очень крепкий" : v < 24.5 ? "Шторм" : "Сильный шторм";
+
+let cities = JSON.parse(localStorage.getItem("cities") || "null") || [{ name: "Москва", lat: 55.7558, lon: 37.6173 }];
+let cache = JSON.parse(localStorage.getItem("weatherCache") || "{}");
+let lastUpdate = +localStorage.getItem("lastUpdate") || 0;
+let current = 0;
+const key = c => c.lat.toFixed(3) + "," + c.lon.toFixed(3);
+const saveCities = () => localStorage.setItem("cities", JSON.stringify(cities));
+
+function themeOf(d) {
+  if (!d) return "";
+  const c = d.current, code = c.weather_code;
+  if (!c.is_day) return "night";
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return "snow";
+  if (code >= 51) return "rain";
+  if (code >= 2) return "cloudy";
+  return "";
+}
+
+async function fetchWeather(c) {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}` +
+    `&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m,wind_gusts_10m,wind_direction_10m,surface_pressure,precipitation` +
+    `&hourly=temperature_2m,weather_code,is_day,wind_speed_10m,wind_gusts_10m,wind_direction_10m,surface_pressure&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,sunrise,sunset` +
+    `&timezone=auto&forecast_days=10&wind_speed_unit=ms`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  return res.json();
+}
+
+function pageHtml(d, c) {
+  if (!d) return `<div class="loading">Загрузка…</div>`;
+  const cur = d.current, dl = d.daily, h = d.hourly;
+  const now = info(cur.weather_code, cur.is_day);
+
+  let start = h.time.findIndex(t => t.slice(0, 13) === cur.time.slice(0, 13));
+  if (start < 0) start = 0;
+  let hours = "";
+  for (let i = start; i < start + 24 && i < h.time.length; i++) {
+    const label = i === start ? "Сейчас" : h.time[i].slice(11, 13);
+    hours += `<div class="hour"><div>${label}</div><div class="ic">${info(h.weather_code[i], h.is_day[i]).icon}</div><div>${r(h.temperature_2m[i])}°</div></div>`;
+  }
+
+  const gMin = Math.min(...dl.temperature_2m_min), gMax = Math.max(...dl.temperature_2m_max);
+  const span = gMax - gMin || 1;
+  let days = "";
+  dl.time.forEach((t, i) => {
+    const lo = dl.temperature_2m_min[i], hi = dl.temperature_2m_max[i];
+    const left = (lo - gMin) / span * 100, width = Math.max((hi - lo) / span * 100, 4);
+    days += `<div class="day">
+      <div>${i === 0 ? "Сегодня" : DAYS[new Date(t + "T12:00").getDay()]}</div>
+      <div>${info(dl.weather_code[i]).icon}</div>
+      <div class="min">${r(lo)}°</div>
+      <div class="bar"><span style="left:${left}%;width:${width}%"></span></div>
+      <div>${r(hi)}°</div></div>`;
+  });
+
+  const uv = dl.uv_index_max[0] ?? 0;
+  const uvText = uv < 3 ? "Низкий" : uv < 6 ? "Умеренный" : uv < 8 ? "Высокий" : "Очень высокий";
+  const tm = s => s ? s.slice(11, 16) : "—";
+  const p0 = h.surface_pressure ? h.surface_pressure[start] : cur.surface_pressure;
+  const p3 = h.surface_pressure ? h.surface_pressure[Math.min(start + 3, h.time.length - 1)] : p0;
+  const trend = p3 - p0 > 0.3 ? "↑ Растёт" : p0 - p3 > 0.3 ? "↓ Падает" : "→ Стабильно";
+  const gust = cur.wind_gusts_10m ?? cur.wind_speed_10m;
+  const windMini = h.wind_speed_10m ? miniChart(h.wind_speed_10m.slice(start, start + 24), "#64d2ff") : "";
+  const presMini = h.surface_pressure ? miniChart(h.surface_pressure.slice(start, start + 24).map(mm), "#ffd60a") : "";
+  const upd = d._fetched ? new Date(d._fetched).toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" }) : "—";
+
+  return `<div class="inner">
+    <div class="hero">
+      ${c.geo ? '<div class="sub">📍 Моё местоположение</div>' : ""}
+      <div class="city">${esc(c.name)}</div>
+      <div class="temp">${r(cur.temperature_2m)}°</div>
+      <div class="desc">${now.text}</div>
+      <div class="hilo">Макс.: ${r(dl.temperature_2m_max[0])}°, мин.: ${r(dl.temperature_2m_min[0])}°</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🕒 Почасовой прогноз · Восход ${tm(dl.sunrise[0])}, закат ${tm(dl.sunset[0])}</div>
+      <div class="hourly">${hours}</div>
+    </div>
+    <div class="card">
+      <div class="card-title">📅 Прогноз на 10 дней</div>
+      ${days}
+    </div>
+    <div class="card tap" data-detail="wind">
+      <div class="card-title">💨 Ветер · график на 24 ч ›</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div class="big">${r(cur.wind_speed_10m)} <span style="font-size:18px">м/с</span></div>
+        <div style="text-align:right;font-size:15px">Порывы до ${r(gust)} м/с<br>${dirText(cur.wind_direction_10m ?? 0)} · ${beaufort(cur.wind_speed_10m)}</div>
+      </div>
+      <div class="wide-chart">${windMini}</div>
+      <div class="more">Нажмите, чтобы открыть подробный график по дням</div>
+    </div>
+    <div class="card tap" data-detail="pressure">
+      <div class="card-title">🧭 Давление · график на 24 ч ›</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div class="big">${r(mm(cur.surface_pressure))} <span style="font-size:18px">мм рт. ст.</span></div>
+        <div style="font-size:15px">${trend}</div>
+      </div>
+      <div class="wide-chart">${presMini}</div>
+      <div class="more">Нажмите, чтобы открыть подробный график по дням</div>
+    </div>
+    <div class="grid">
+      <div class="card"><div class="card-title">🌡️ Ощущается</div><div class="big">${r(cur.apparent_temperature)}°</div>
+        <div class="note">${cur.apparent_temperature < cur.temperature_2m - 1 ? "Кажется холоднее из-за ветра." : cur.apparent_temperature > cur.temperature_2m + 1 ? "Кажется теплее из-за влажности." : "Близко к фактической."}</div></div>
+      <div class="card"><div class="card-title">💧 Влажность</div><div class="big">${cur.relative_humidity_2m}%</div>
+        <div class="note">${cur.relative_humidity_2m > 70 ? "Высокая влажность." : "Комфортная влажность."}</div></div>
+
+      <div class="card"><div class="card-title">☀️ УФ-индекс</div><div class="big">${r(uv)}</div>
+        <div class="note">${uvText}</div></div>
+
+      <div class="card"><div class="card-title">🌧️ Осадки</div><div class="big">${cur.precipitation} мм</div>
+        <div class="note">За последний час.</div></div>
+    </div>
+    <div class="updated">Обновлено в ${upd}</div>
+  </div>`;
+}
+
+// Мини-график для карточки
+function miniChart(vals, color) {
+  if (!vals.length) return "";
+  const W = 300, H = 60, lo = Math.min(...vals), hi = Math.max(...vals), sp = (hi - lo) || 1;
+  const pts = vals.map((v, i) => [i / (vals.length - 1) * W, 6 + (H - 12) * (1 - (v - lo) / sp)]);
+  const line = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join("");
+  const id = "g" + Math.random().toString(36).slice(2, 8);
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:60px;display:block">
+    <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".45"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
+    <path d="${line}L${W},${H}L0,${H}Z" fill="url(#${id})"/>
+    <path d="${line}" fill="none" stroke="${color}" stroke-width="2.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+    <circle cx="0" cy="${pts[0][1]}" r="4" fill="#fff"/>
+  </svg>`;
+}
+
+// ===== Подробный график (как на iPhone) =====
+let detail = null, chart = null;
+
+function bigChart(series, opt) {
+  const W = 360, H = 230, L = 6, R = 40, T = opt.arrows ? 30 : 12, B = 24;
+  const n = series[0].v.length;
+  const all = series.flatMap(s => s.v);
+  let lo = opt.zero ? 0 : Math.min(...all), hi = Math.max(...all);
+  if (!opt.zero) { lo -= 1; hi += 1; } else hi = hi * 1.15 + 1;
+  const step = opt.zero ? Math.ceil((hi - lo) / 4) : Math.max(1, Math.ceil((hi - lo) / 4));
+  lo = opt.zero ? 0 : Math.floor(lo / step) * step; hi = lo + step * 4;
+  const x = i => L + (W - L - R) * i / (n - 1);
+  const y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+  let s = "";
+  for (let k = 0; k <= 4; k++) {
+    const v = lo + step * k, yy = y(v);
+    s += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" stroke="#48484a" stroke-width="1"/>`;
+    s += `<text x="${W - R + 6}" y="${yy + 4}" fill="#8e8e93" font-size="11">${r(v)}</text>`;
+  }
+  for (let i = 0; i < n; i += 6) {
+    s += `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${H - B}" stroke="#3a3a3c" stroke-dasharray="2 3"/>`;
+    s += `<text x="${x(i)}" y="${H - 6}" fill="#8e8e93" font-size="11" text-anchor="${i ? "middle" : "start"}">${String(i).padStart(2, "0")}</text>`;
+  }
+  if (opt.nowIdx >= 0) {
+    s += `<rect x="${L}" y="${T}" width="${x(opt.nowIdx) - L}" height="${H - T - B}" fill="#000" opacity=".25"/>`;
+  }
+  series.forEach((se, k) => {
+    const d = se.v.map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + "," + y(v).toFixed(1)).join("");
+    if (k === 0) s += `<defs><linearGradient id="bg0" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${se.color}" stop-opacity=".4"/><stop offset="1" stop-color="${se.color}" stop-opacity="0"/></linearGradient></defs>
+      <path d="${d}L${x(n - 1)},${H - B}L${x(0)},${H - B}Z" fill="url(#bg0)"/>`;
+    s += `<path d="${d}" fill="none" stroke="${se.color}" stroke-width="${k ? 2 : 3}" ${se.dash ? 'stroke-dasharray="5 4"' : ""} stroke-linejoin="round" stroke-linecap="round"/>`;
+  });
+  if (opt.arrows) {
+    for (let i = 0; i < n; i += 3) {
+      // стрелка показывает, КУДА дует ветер
+      s += `<g transform="translate(${x(i)},14) rotate(${opt.arrows[i] + 180})"><path d="M0,-7 L4,4 L0,1.5 L-4,4 Z" fill="#fff" opacity=".85"/></g>`;
+    }
+  }
+  s += `<line id="mkl" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="#fff" stroke-width="1.5" opacity="0"/>
+        <circle id="mkc" r="6" fill="#fff" stroke="${series[0].color}" stroke-width="3" opacity="0"/>`;
+  chart = { x, y, n, W, series };
+  return `<svg id="bigsvg" viewBox="0 0 ${W} ${H}">${s}</svg>`;
+}
+
+function openDetail(type) {
+  detail = { type, day: 0 };
+  renderDetail();
+  $("detail").classList.add("open");
+  history.pushState({ detail: 1 }, "");
+}
+function closeDetail(fromPop) {
+  if (!detail) return;
+  detail = null;
+  $("detail").classList.remove("open");
+  if (!fromPop && history.state && history.state.detail) history.back();
+}
+
+function renderDetail() {
+  const c = cities[current], d = c && cache[key(c)];
+  if (!detail || !d || !d.hourly.surface_pressure) {
+    if (detail) $("detail").innerHTML = `<div class="dhead"><h2>Загрузка…</h2><button id="dclose">✕</button></div>`;
+    return;
+  }
+  const h = d.hourly, dl = d.daily, day = detail.day, wind = detail.type === "wind";
+  const date = dl.time[day];
+  const idx = []; h.time.forEach((t, i) => { if (t.slice(0, 10) === date) idx.push(i); });
+  const nowIdx = day === 0 ? idx.findIndex(i => h.time[i].slice(0, 13) === d.current.time.slice(0, 13)) : -1;
+
+  const tabs = dl.time.map((t, i) => `<button class="${i === day ? "on" : ""}" data-day="${i}">
+    <small>${i === 0 ? "Сег" : DAYS[new Date(t + "T12:00").getDay()]}</small><b>${+t.slice(8, 10)}</b></button>`).join("");
+
+  let series, opt, rows = "", summary = "";
+  if (wind) {
+    const sp = idx.map(i => h.wind_speed_10m[i]), gu = idx.map(i => h.wind_gusts_10m[i]), dir = idx.map(i => h.wind_direction_10m[i]);
+    series = [{ v: sp, color: "#64d2ff", name: "Ветер" }, { v: gu, color: "#bf5af2", dash: 1, name: "Порывы" }];
+    opt = { zero: true, arrows: dir, nowIdx };
+    const mx = Math.max(...sp), mg = Math.max(...gu), avg = sp.reduce((a, b) => a + b, 0) / sp.length;
+    summary = `Средняя скорость ${avg.toFixed(1)} м/с, максимум ${r(mx)} м/с, порывы до ${r(mg)} м/с. ${mg >= 15 ? "⚠️ Ожидаются сильные порывы." : ""}`;
+    for (let k = 0; k < idx.length; k += 3) rows += `<div class="row"><span>${h.time[idx[k]].slice(11, 16)}</span><span>${r(sp[k])} м/с · порывы ${r(gu[k])} · ${dirText(dir[k])}</span></div>`;
+  } else {
+    const pr = idx.map(i => mm(h.surface_pressure[i]));
+    series = [{ v: pr, color: "#ffd60a", name: "Давление" }];
+    opt = { zero: false, nowIdx };
+    const mn = Math.min(...pr), mx = Math.max(...pr), diff = pr[pr.length - 1] - pr[0];
+    summary = `За день: от ${r(mn)} до ${r(mx)} мм рт. ст. ${diff > 1 ? "Давление растёт ↑" : diff < -1 ? "Давление падает ↓" : "Давление стабильно →"} (${diff > 0 ? "+" : ""}${diff.toFixed(1)}). Норма ≈ 760 мм на уровне моря; на высоте значения ниже.`;
+    for (let k = 0; k < idx.length; k += 3) rows += `<div class="row"><span>${h.time[idx[k]].slice(11, 16)}</span><span>${pr[k].toFixed(1)} мм рт. ст.</span></div>`;
+  }
+
+  const svg = bigChart(series, opt);
+  const legend = series.map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
+  $("detail").innerHTML = `
+    <div class="dhead"><h2>${wind ? "💨 Ветер" : "🧭 Давление"} · ${esc(c.name)}</h2><button id="dclose">✕</button></div>
+    <div class="tabs">${tabs}</div>
+    <div class="dval" id="dval"></div>
+    <div class="dsub" id="dsub"></div>
+    <div class="chart-box" id="cbox">${svg}${legend ? `<div class="legend">${legend}</div>` : ""}</div>
+    <div class="dcard"><h3>Сводка</h3>${summary}</div>
+    <div class="dcard"><h3>Каждые 3 часа</h3>${rows}</div>
+    <div class="hint">Проведите пальцем по графику, чтобы увидеть значение в любой час</div>`;
+  detail.idx = idx; detail.wind = wind;
+  showPoint(nowIdx >= 0 ? nowIdx : 12);
+  $("detail").querySelector(".tabs .on")?.scrollIntoView({ inline: "center", block: "nearest" });
+}
+
+function showPoint(i) {
+  if (!chart) return;
+  i = Math.max(0, Math.min(chart.n - 1, i));
+  const s0 = chart.series[0], d = cache[key(cities[current])], h = d.hourly;
+  const xx = chart.x(i), yy = chart.y(s0.v[i]);
+  const l = $("mkl"), c = $("mkc");
+  l.setAttribute("x1", xx); l.setAttribute("x2", xx); l.setAttribute("opacity", ".7");
+  c.setAttribute("cx", xx); c.setAttribute("cy", yy); c.setAttribute("opacity", "1");
+  const t = h.time[detail.idx[i]].slice(11, 16);
+  if (detail.wind) {
+    $("dval").textContent = `${r(s0.v[i])} м/с`;
+    $("dsub").textContent = `${t} · порывы ${r(chart.series[1].v[i])} м/с · ${dirText(h.wind_direction_10m[detail.idx[i]])} · ${beaufort(s0.v[i])}`;
+  } else {
+    $("dval").textContent = `${s0.v[i].toFixed(1)} мм рт. ст.`;
+    $("dsub").textContent = `${t} · ${r(s0.v[i] / 0.750062)} гПа`;
+  }
+}
+
+function scrub(e) {
+  const svg = $("bigsvg"); if (!svg) return;
+  const rect = svg.getBoundingClientRect();
+  const px = (e.clientX - rect.left) / rect.width * chart.W;
+  let best = 0, bd = 1e9;
+  for (let i = 0; i < chart.n; i++) { const dd = Math.abs(chart.x(i) - px); if (dd < bd) { bd = dd; best = i; } }
+  showPoint(best);
+}
+
+$("detail").addEventListener("click", e => {
+  if (e.target.closest("#dclose")) return closeDetail();
+  const tb = e.target.closest("[data-day]");
+  if (tb) { detail.day = +tb.dataset.day; renderDetail(); }
+});
+$("detail").addEventListener("pointerdown", e => { if (e.target.closest("#cbox")) scrub(e); });
+$("detail").addEventListener("pointermove", e => { if (e.target.closest("#cbox") && (e.buttons || e.pointerType === "touch")) scrub(e); });
+$("detail").addEventListener("touchmove", e => { if (e.target.closest("#cbox")) scrub(e.touches[0]); }, { passive: true });
+$("pages").addEventListener("click", e => {
+  const t = e.target.closest("[data-detail]");
+  if (t) openDetail(t.dataset.detail);
+});
+window.addEventListener("popstate", () => {
+  if (detail) closeDetail(true);
+  else if ($("list").classList.contains("open")) closeList(true);
+});
+
+function renderPages() {
+  $("pages").innerHTML = cities.map((c, i) => `<section class="page" id="p${i}">${pageHtml(cache[key(c)], c)}</section>`).join("");
+  $("dots").innerHTML = cities.map((_, i) => `<i class="${i === current ? "on" : ""}"></i>`).join("");
+  goTo(Math.min(current, cities.length - 1), false);
+}
+
+function renderList() {
+  $("cityList").innerHTML = cities.map((c, i) => {
+    const d = cache[key(c)];
+    const time = d ? new Date().toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit", timeZone: d.timezone }) : "";
+    return `<div class="citem ${themeOf(d)}" data-i="${i}">
+      <div><div class="n">${c.geo ? "📍 " : ""}${esc(c.name)}</div><div class="t">${time}</div></div>
+      <div class="r"><div class="tt">${d ? r(d.current.temperature_2m) + "°" : "…"}</div></div>
+      <div class="d">${d ? info(d.current.weather_code, d.current.is_day).text : ""}</div>
+      <div class="hl">${d ? `Макс.: ${r(d.daily.temperature_2m_max[0])}°, мин.: ${r(d.daily.temperature_2m_min[0])}°` : ""}</div>
+      <button class="del" data-del="${i}">✕</button>
+    </div>`;
+  }).join("");
+}
+
+function updateTheme() {
+  const c = cities[current];
+  document.body.className = c ? themeOf(cache[key(c)]) : "";
+  const colors = { "": "#2f6fb5", night: "#0b1026", cloudy: "#5b6b7d", rain: "#3a4a5c", snow: "#7d8fa6" };
+  document.querySelector('meta[name="theme-color"]').content = colors[document.body.className] || "#2f6fb5";
+  document.querySelectorAll("#dots i").forEach((el, i) => el.classList.toggle("on", i === current));
+}
+
+function goTo(i, smooth = true) {
+  current = Math.max(0, i);
+  const p = $("pages");
+  p.scrollTo({ left: current * p.clientWidth, behavior: smooth ? "smooth" : "auto" });
+  updateTheme();
+}
+
+$("pages").addEventListener("scroll", () => {
+  const p = $("pages");
+  const i = Math.round(p.scrollLeft / p.clientWidth);
+  if (i !== current) { current = i; updateTheme(); }
+});
+
+async function loadAll() {
+  $("refreshBtn").innerHTML = '<span class="spin">↻</span>';
+  await Promise.all(cities.map(async c => {
+    try {
+      const d = await fetchWeather(c);
+      d._fetched = Date.now();
+      cache[key(c)] = d;
+    } catch (e) { /* остаются старые данные из кэша */ }
+  }));
+  const keep = {};
+  cities.forEach(c => { if (cache[key(c)]) keep[key(c)] = cache[key(c)]; });
+  cache = keep;
+  try { localStorage.setItem("weatherCache", JSON.stringify(cache)); } catch {}
+  lastUpdate = Date.now();
+  localStorage.setItem("lastUpdate", lastUpdate);
+  const sc = $("pages").scrollLeft;
+  renderPages();
+  $("pages").scrollLeft = sc;
+  renderList();
+  updateTheme();
+  if (detail) { const keepDay = detail.day; renderDetail(); if (detail) detail.day = keepDay; }
+  $("refreshBtn").textContent = "↻";
+}
+
+async function addCity(c) {
+  const idx = cities.findIndex(x => key(x) === key(c));
+  if (idx >= 0) { closeList(); goTo(idx); return; }
+  if (c.geo) { cities = cities.filter(x => !x.geo); cities.unshift(c); }
+  else cities.push(c);
+  saveCities();
+  renderPages(); renderList();
+  closeList();
+  const target = c.geo ? 0 : cities.length - 1;
+  setTimeout(() => goTo(target), 50);
+  await loadAll();
+}
+
+// Поиск городов
+let timer;
+$("q").addEventListener("input", e => {
+  clearTimeout(timer);
+  const v = e.target.value.trim();
+  if (v.length < 2) { $("results").innerHTML = ""; return; }
+  timer = setTimeout(async () => {
+    try {
+      const j = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(v)}&count=7&language=ru`)).json();
+      const res = j.results || [];
+      $("results").innerHTML = res.length
+        ? res.map((g, i) => `<div data-g="${i}">${esc(g.name)} <small>${esc([g.admin1, g.country].filter(Boolean).join(", "))}</small></div>`).join("")
+        : `<div style="opacity:.6">Ничего не найдено</div>`;
+      $("results").querySelectorAll("[data-g]").forEach(el => el.onclick = () => {
+        const g = res[+el.dataset.g];
+        $("q").value = ""; $("results").innerHTML = "";
+        addCity({ name: g.name, lat: g.latitude, lon: g.longitude });
+      });
+    } catch { $("results").innerHTML = `<div style="opacity:.6">Нет соединения</div>`; }
+  }, 300);
+});
+
+// Геолокация
+$("geoBtn").onclick = () => {
+  if (!navigator.geolocation) return alert("Геолокация недоступна");
+  $("geoBtn").textContent = "📍 Определяю…";
+  navigator.geolocation.getCurrentPosition(async p => {
+    const lat = p.coords.latitude, lon = p.coords.longitude;
+    let name = "Моё место";
+    try {
+      const j = await (await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=ru`)).json();
+      const a = j.address || {};
+      name = a.city || a.town || a.village || a.state || name;
+    } catch {}
+    $("geoBtn").textContent = "📍 Добавить моё местоположение";
+    addCity({ name, lat, lon, geo: true });
+  }, () => {
+    $("geoBtn").textContent = "📍 Добавить моё местоположение";
+    alert("Не удалось определить местоположение. Разрешите доступ к геолокации в настройках браузера.");
+  }, { timeout: 15000 });
+};
+
+// Список городов
+const openList = () => { renderList(); $("list").classList.add("open"); history.pushState({ list: 1 }, ""); };
+function closeList(fromPop) {
+  if (!$("list").classList.contains("open")) return;
+  $("list").classList.remove("open", "edit"); $("editBtn").textContent = "Изменить";
+  if (fromPop !== true && history.state && history.state.list) history.back();
+}
+$("listBtn").onclick = openList;
+$("closeBtn").onclick = () => closeList();
+$("editBtn").onclick = () => {
+  const on = $("list").classList.toggle("edit");
+  $("editBtn").textContent = on ? "Готово" : "Изменить";
+};
+$("cityList").addEventListener("click", e => {
+  const del = e.target.dataset.del;
+  if (del !== undefined) {
+    e.stopPropagation();
+    if (cities.length === 1) return alert("Должен остаться хотя бы один город");
+    cities.splice(+del, 1);
+    saveCities();
+    if (current >= cities.length) current = cities.length - 1;
+    renderPages(); renderList();
+    return;
+  }
+  const item = e.target.closest(".citem");
+  if (item && !$("list").classList.contains("edit")) { closeList(); goTo(+item.dataset.i, false); }
+});
+
+$("refreshBtn").onclick = loadAll;
+
+// Автообновление: каждые 10 минут и при возврате в приложение
+setInterval(loadAll, 10 * 60 * 1000);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && Date.now() - lastUpdate > 5 * 60 * 1000) loadAll();
+});
+window.addEventListener("online", loadAll);
+window.addEventListener("resize", () => goTo(current, false));
+
+renderPages();
+updateTheme();
+loadAll();
+
+// Установка как приложение (Android / Chrome)
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+</script>
+</body>
+</html>

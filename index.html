@@ -158,7 +158,16 @@
   .dcard h3 { font-size: 13px; text-transform: uppercase; opacity: .6; margin-bottom: 6px; }
   .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #3a3a3c; }
   .row:last-child { border-bottom: none; }
-  .row span:last-child { opacity: .75; }
+  .row span:last-child { opacity: .75; text-align: right; }
+  .chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: -4px -16px 16px; padding: 0 16px; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chips button {
+    flex: 0 0 auto; border: none; border-radius: 18px; padding: 8px 14px; background: #2c2c2e;
+    color: #fff; font-size: 15px; font-weight: 500; cursor: pointer; white-space: nowrap;
+  }
+  .chips button.on { background: #0a84ff; }
+  .day.tap { border-radius: 8px; }
+  .day.tap:active { background: rgba(255,255,255,.08); transform: none; }
 </style>
 </head>
 <body>
@@ -231,7 +240,8 @@ function themeOf(d) {
 async function fetchWeather(c) {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}` +
     `&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m,wind_gusts_10m,wind_direction_10m,surface_pressure,precipitation` +
-    `&hourly=temperature_2m,weather_code,is_day,wind_speed_10m,wind_gusts_10m,wind_direction_10m,surface_pressure&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,sunrise,sunset` +
+    `&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,precipitation_probability,uv_index,weather_code,is_day,wind_speed_10m,wind_gusts_10m,wind_direction_10m,surface_pressure` +
+    `&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,sunrise,sunset,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max` +
     `&timezone=auto&forecast_days=10&wind_speed_unit=ms`;
   const res = await fetch(url);
   if (!res.ok) throw new Error("HTTP " + res.status);
@@ -257,7 +267,7 @@ function pageHtml(d, c) {
   dl.time.forEach((t, i) => {
     const lo = dl.temperature_2m_min[i], hi = dl.temperature_2m_max[i];
     const left = (lo - gMin) / span * 100, width = Math.max((hi - lo) / span * 100, 4);
-    days += `<div class="day">
+    days += `<div class="day tap" data-open-day="${i}">
       <div>${i === 0 ? "Сегодня" : DAYS[new Date(t + "T12:00").getDay()]}</div>
       <div>${info(dl.weather_code[i]).icon}</div>
       <div class="min">${r(lo)}°</div>
@@ -289,7 +299,7 @@ function pageHtml(d, c) {
       <div class="hourly">${hours}</div>
     </div>
     <div class="card">
-      <div class="card-title">📅 Прогноз на 10 дней</div>
+      <div class="card-title">📅 Прогноз на 10 дней · нажмите на день ›</div>
       ${days}
     </div>
     <div class="card tap" data-detail="wind">
@@ -311,15 +321,15 @@ function pageHtml(d, c) {
       <div class="more">Нажмите, чтобы открыть подробный график по дням</div>
     </div>
     <div class="grid">
-      <div class="card"><div class="card-title">🌡️ Ощущается</div><div class="big">${r(cur.apparent_temperature)}°</div>
+      <div class="card tap" data-detail="temp"><div class="card-title">🌡️ Ощущается ›</div><div class="big">${r(cur.apparent_temperature)}°</div>
         <div class="note">${cur.apparent_temperature < cur.temperature_2m - 1 ? "Кажется холоднее из-за ветра." : cur.apparent_temperature > cur.temperature_2m + 1 ? "Кажется теплее из-за влажности." : "Близко к фактической."}</div></div>
-      <div class="card"><div class="card-title">💧 Влажность</div><div class="big">${cur.relative_humidity_2m}%</div>
+      <div class="card tap" data-detail="humidity"><div class="card-title">💧 Влажность ›</div><div class="big">${cur.relative_humidity_2m}%</div>
         <div class="note">${cur.relative_humidity_2m > 70 ? "Высокая влажность." : "Комфортная влажность."}</div></div>
 
-      <div class="card"><div class="card-title">☀️ УФ-индекс</div><div class="big">${r(uv)}</div>
+      <div class="card tap" data-detail="uv"><div class="card-title">☀️ УФ-индекс ›</div><div class="big">${r(uv)}</div>
         <div class="note">${uvText}</div></div>
 
-      <div class="card"><div class="card-title">🌧️ Осадки</div><div class="big">${cur.precipitation} мм</div>
+      <div class="card tap" data-detail="precip"><div class="card-title">🌧️ Осадки ›</div><div class="big">${cur.precipitation} мм</div>
         <div class="note">За последний час.</div></div>
     </div>
     <div class="updated">Обновлено в ${upd}</div>
@@ -348,10 +358,14 @@ function bigChart(series, opt) {
   const W = 360, H = 230, L = 6, R = 40, T = opt.arrows ? 30 : 12, B = 24;
   const n = series[0].v.length;
   const all = series.flatMap(s => s.v);
-  let lo = opt.zero ? 0 : Math.min(...all), hi = Math.max(...all);
-  if (!opt.zero) { lo -= 1; hi += 1; } else hi = hi * 1.15 + 1;
-  const step = opt.zero ? Math.ceil((hi - lo) / 4) : Math.max(1, Math.ceil((hi - lo) / 4));
-  lo = opt.zero ? 0 : Math.floor(lo / step) * step; hi = lo + step * 4;
+  let lo, hi, step;
+  if (opt.range) { [lo, hi] = opt.range; step = (hi - lo) / 4; }
+  else {
+    lo = opt.zero ? 0 : Math.min(...all); hi = Math.max(...all);
+    if (!opt.zero) { lo -= 1; hi += 1; } else hi = hi * 1.15 + (opt.minTop || 1);
+    step = opt.zero ? Math.max(opt.minStep || 1, Math.ceil((hi - lo) / 4)) : Math.max(1, Math.ceil((hi - lo) / 4));
+    lo = opt.zero ? 0 : Math.floor(lo / step) * step; hi = lo + step * 4;
+  }
   const x = i => L + (W - L - R) * i / (n - 1);
   const y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
   let s = "";
@@ -385,8 +399,8 @@ function bigChart(series, opt) {
   return `<svg id="bigsvg" viewBox="0 0 ${W} ${H}">${s}</svg>`;
 }
 
-function openDetail(type) {
-  detail = { type, day: 0 };
+function openDetail(type, day = 0) {
+  detail = { type, day };
   renderDetail();
   $("detail").classList.add("open");
   history.pushState({ detail: 1 }, "");
@@ -398,69 +412,134 @@ function closeDetail(fromPop) {
   if (!fromPop && history.state && history.state.detail) history.back();
 }
 
+// Показатели экрана дня: какой ряд рисовать, как подписать точку и строку таблицы
+const METRICS = {
+  temp: {
+    title: "🌡️ Температура", chip: "Температура",
+    series: (h, idx) => [
+      { v: idx.map(i => h.temperature_2m[i]), color: "#ff9f0a", name: "Температура" },
+      { v: idx.map(i => h.apparent_temperature[i]), color: "#bf5af2", dash: 1, name: "Ощущается" }],
+    opt: () => ({ zero: false }),
+    val: (s, i) => `${r(s[0].v[i])}°`,
+    sub: (s, i) => `ощущается как ${r(s[1].v[i])}°`,
+    row: (s, i) => `${r(s[0].v[i])}° · ощущается ${r(s[1].v[i])}°`,
+    summary: s => { const t = s[0].v; return `От ${r(Math.min(...t))}° до ${r(Math.max(...t))}°. Ощущается от ${r(Math.min(...s[1].v))}° до ${r(Math.max(...s[1].v))}°.`; }
+  },
+  wind: {
+    title: "💨 Ветер", chip: "Ветер",
+    series: (h, idx) => [
+      { v: idx.map(i => h.wind_speed_10m[i]), color: "#64d2ff", name: "Ветер" },
+      { v: idx.map(i => h.wind_gusts_10m[i]), color: "#bf5af2", dash: 1, name: "Порывы" }],
+    opt: (h, idx) => ({ zero: true, arrows: idx.map(i => h.wind_direction_10m[i]) }),
+    val: (s, i) => `${r(s[0].v[i])} м/с`,
+    sub: (s, i, h, hi) => `порывы ${r(s[1].v[i])} м/с · ${dirText(h.wind_direction_10m[hi])} · ${beaufort(s[0].v[i])}`,
+    row: (s, i, h, hi) => `${r(s[0].v[i])} м/с · порывы ${r(s[1].v[i])} · ${dirText(h.wind_direction_10m[hi])}`,
+    summary: s => { const sp = s[0].v, gu = s[1].v, mg = Math.max(...gu); return `Средняя скорость ${(sp.reduce((a, b) => a + b, 0) / sp.length).toFixed(1)} м/с, максимум ${r(Math.max(...sp))} м/с, порывы до ${r(mg)} м/с. ${mg >= 15 ? "⚠️ Ожидаются сильные порывы." : ""}`; }
+  },
+  pressure: {
+    title: "🧭 Давление", chip: "Давление",
+    series: (h, idx) => [{ v: idx.map(i => mm(h.surface_pressure[i])), color: "#ffd60a", name: "Давление" }],
+    opt: () => ({ zero: false }),
+    val: (s, i) => `${s[0].v[i].toFixed(1)} мм рт. ст.`,
+    sub: (s, i) => `${r(s[0].v[i] / 0.750062)} гПа`,
+    row: (s, i) => `${s[0].v[i].toFixed(1)} мм рт. ст.`,
+    summary: s => { const pr = s[0].v, diff = pr[pr.length - 1] - pr[0]; return `От ${r(Math.min(...pr))} до ${r(Math.max(...pr))} мм рт. ст. ${diff > 1 ? "Давление растёт ↑" : diff < -1 ? "Давление падает ↓" : "Давление стабильно →"} (${diff > 0 ? "+" : ""}${diff.toFixed(1)}). Норма ≈ 760 мм на уровне моря; на высоте значения ниже.`; }
+  },
+  humidity: {
+    title: "💧 Влажность", chip: "Влажность",
+    series: (h, idx) => [{ v: idx.map(i => h.relative_humidity_2m[i]), color: "#30d5c8", name: "Влажность" }],
+    opt: () => ({ range: [0, 100] }),
+    val: (s, i) => `${r(s[0].v[i])}%`,
+    sub: (s, i) => s[0].v[i] > 85 ? "очень влажно" : s[0].v[i] > 70 ? "влажно" : s[0].v[i] < 30 ? "сухо" : "комфортно",
+    row: (s, i) => `${r(s[0].v[i])}%`,
+    summary: s => { const v = s[0].v; return `От ${r(Math.min(...v))}% до ${r(Math.max(...v))}%, в среднем ${r(v.reduce((a, b) => a + b, 0) / v.length)}%.`; }
+  },
+  precip: {
+    title: "🌧️ Осадки", chip: "Осадки",
+    series: (h, idx) => [{ v: idx.map(i => h.precipitation[i]), color: "#0a84ff", name: "Осадки, мм/ч" }],
+    opt: () => ({ zero: true }),
+    val: (s, i) => `${s[0].v[i].toFixed(1)} мм`,
+    sub: (s, i, h, hi) => `вероятность ${h.precipitation_probability[hi] ?? 0}%`,
+    row: (s, i, h, hi) => `${s[0].v[i].toFixed(1)} мм · ${h.precipitation_probability[hi] ?? 0}%`,
+    summary: (s, h, idx) => { const sum = s[0].v.reduce((a, b) => a + b, 0), pmax = Math.max(...idx.map(i => h.precipitation_probability[i] ?? 0)); return sum < 0.1 ? `Без осадков. Вероятность не выше ${pmax}%.` : `Всего за день ${sum.toFixed(1)} мм, вероятность до ${pmax}%.`; }
+  },
+  uv: {
+    title: "☀️ УФ-индекс", chip: "УФ",
+    series: (h, idx) => [{ v: idx.map(i => h.uv_index[i] ?? 0), color: "#ff9f0a", name: "УФ-индекс" }],
+    opt: () => ({ zero: true, minStep: 2 }),
+    val: (s, i) => `${r(s[0].v[i])}`,
+    sub: (s, i) => { const u = s[0].v[i]; return u < 3 ? "низкий" : u < 6 ? "умеренный" : u < 8 ? "высокий" : "очень высокий"; },
+    row: (s, i) => `${s[0].v[i].toFixed(1)}`,
+    summary: s => { const m = Math.max(...s[0].v); return `Максимум ${r(m)}. ${m >= 6 ? "Нужна защита от солнца в полдень." : m >= 3 ? "Днём пригодится солнцезащитный крем." : "Защита не нужна."}`; }
+  }
+};
+const METRIC_ORDER = ["temp", "wind", "pressure", "humidity", "precip", "uv"];
+
 function renderDetail() {
   const c = cities[current], d = c && cache[key(c)];
-  if (!detail || !d || !d.hourly.surface_pressure) {
+  if (!detail || !d || !d.hourly.relative_humidity_2m) {
     if (detail) $("detail").innerHTML = `<div class="dhead"><h2>Загрузка…</h2><button id="dclose">✕</button></div>`;
     return;
   }
-  const h = d.hourly, dl = d.daily, day = detail.day, wind = detail.type === "wind";
+  const h = d.hourly, dl = d.daily, day = detail.day, M = METRICS[detail.type];
   const date = dl.time[day];
   const idx = []; h.time.forEach((t, i) => { if (t.slice(0, 10) === date) idx.push(i); });
   const nowIdx = day === 0 ? idx.findIndex(i => h.time[i].slice(0, 13) === d.current.time.slice(0, 13)) : -1;
 
   const tabs = dl.time.map((t, i) => `<button class="${i === day ? "on" : ""}" data-day="${i}">
     <small>${i === 0 ? "Сег" : DAYS[new Date(t + "T12:00").getDay()]}</small><b>${+t.slice(8, 10)}</b></button>`).join("");
+  const chips = METRIC_ORDER.map(k => `<button class="${k === detail.type ? "on" : ""}" data-metric="${k}">${METRICS[k].chip}</button>`).join("");
 
-  let series, opt, rows = "", summary = "";
-  if (wind) {
-    const sp = idx.map(i => h.wind_speed_10m[i]), gu = idx.map(i => h.wind_gusts_10m[i]), dir = idx.map(i => h.wind_direction_10m[i]);
-    series = [{ v: sp, color: "#64d2ff", name: "Ветер" }, { v: gu, color: "#bf5af2", dash: 1, name: "Порывы" }];
-    opt = { zero: true, arrows: dir, nowIdx };
-    const mx = Math.max(...sp), mg = Math.max(...gu), avg = sp.reduce((a, b) => a + b, 0) / sp.length;
-    summary = `Средняя скорость ${avg.toFixed(1)} м/с, максимум ${r(mx)} м/с, порывы до ${r(mg)} м/с. ${mg >= 15 ? "⚠️ Ожидаются сильные порывы." : ""}`;
-    for (let k = 0; k < idx.length; k += 3) rows += `<div class="row"><span>${h.time[idx[k]].slice(11, 16)}</span><span>${r(sp[k])} м/с · порывы ${r(gu[k])} · ${dirText(dir[k])}</span></div>`;
-  } else {
-    const pr = idx.map(i => mm(h.surface_pressure[i]));
-    series = [{ v: pr, color: "#ffd60a", name: "Давление" }];
-    opt = { zero: false, nowIdx };
-    const mn = Math.min(...pr), mx = Math.max(...pr), diff = pr[pr.length - 1] - pr[0];
-    summary = `За день: от ${r(mn)} до ${r(mx)} мм рт. ст. ${diff > 1 ? "Давление растёт ↑" : diff < -1 ? "Давление падает ↓" : "Давление стабильно →"} (${diff > 0 ? "+" : ""}${diff.toFixed(1)}). Норма ≈ 760 мм на уровне моря; на высоте значения ниже.`;
-    for (let k = 0; k < idx.length; k += 3) rows += `<div class="row"><span>${h.time[idx[k]].slice(11, 16)}</span><span>${pr[k].toFixed(1)} мм рт. ст.</span></div>`;
-  }
+  const series = M.series(h, idx);
+  const opt = { ...M.opt(h, idx), nowIdx };
+  let rows = "";
+  for (let k = 0; k < idx.length; k += 3) rows += `<div class="row"><span>${h.time[idx[k]].slice(11, 16)}</span><span>${M.row(series, k, h, idx[k])}</span></div>`;
+
+  // Итоги дня по всем показателям
+  const tm = s => s ? s.slice(11, 16) : "—";
+  const hum = idx.map(i => h.relative_humidity_2m[i]), pr = idx.map(i => mm(h.surface_pressure[i]));
+  const dayInfo = info(dl.weather_code[day]);
+  const overview = [
+    ["Погода", `${dayInfo.icon} ${dayInfo.text}`],
+    ["Температура", `${r(dl.temperature_2m_min[day])}° … ${r(dl.temperature_2m_max[day])}°`],
+    ["Ветер", `до ${r(dl.wind_speed_10m_max[day])} м/с, порывы до ${r(dl.wind_gusts_10m_max[day])}`],
+    ["Давление", `${r(Math.min(...pr))}–${r(Math.max(...pr))} мм рт. ст.`],
+    ["Влажность", `${r(Math.min(...hum))}–${r(Math.max(...hum))}%`],
+    ["Осадки", `${(dl.precipitation_sum[day] ?? 0).toFixed(1)} мм · вероятность ${dl.precipitation_probability_max[day] ?? 0}%`],
+    ["УФ-индекс", `${r(dl.uv_index_max[day] ?? 0)}`],
+    ["Восход / закат", `${tm(dl.sunrise[day])} / ${tm(dl.sunset[day])}`]
+  ].map(([a, b]) => `<div class="row"><span>${a}</span><span>${b}</span></div>`).join("");
 
   const svg = bigChart(series, opt);
-  const legend = series.map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
+  const legend = series.length > 1 ? series.map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("") : "";
+  const dateText = new Date(date + "T12:00").toLocaleDateString("ru", { day: "numeric", month: "long" });
   $("detail").innerHTML = `
-    <div class="dhead"><h2>${wind ? "💨 Ветер" : "🧭 Давление"} · ${esc(c.name)}</h2><button id="dclose">✕</button></div>
+    <div class="dhead"><h2>${esc(c.name)} · ${dateText}</h2><button id="dclose">✕</button></div>
     <div class="tabs">${tabs}</div>
+    <div class="chips">${chips}</div>
     <div class="dval" id="dval"></div>
     <div class="dsub" id="dsub"></div>
     <div class="chart-box" id="cbox">${svg}${legend ? `<div class="legend">${legend}</div>` : ""}</div>
-    <div class="dcard"><h3>Сводка</h3>${summary}</div>
+    <div class="dcard"><h3>${M.title} · сводка</h3>${M.summary(series, h, idx)}</div>
     <div class="dcard"><h3>Каждые 3 часа</h3>${rows}</div>
+    <div class="dcard"><h3>Весь день</h3>${overview}</div>
     <div class="hint">Проведите пальцем по графику, чтобы увидеть значение в любой час</div>`;
-  detail.idx = idx; detail.wind = wind;
+  detail.idx = idx;
   showPoint(nowIdx >= 0 ? nowIdx : 12);
   $("detail").querySelector(".tabs .on")?.scrollIntoView({ inline: "center", block: "nearest" });
+  $("detail").querySelector(".chips .on")?.scrollIntoView({ inline: "center", block: "nearest" });
 }
 
 function showPoint(i) {
-  if (!chart) return;
+  if (!chart || !detail) return;
   i = Math.max(0, Math.min(chart.n - 1, i));
-  const s0 = chart.series[0], d = cache[key(cities[current])], h = d.hourly;
-  const xx = chart.x(i), yy = chart.y(s0.v[i]);
+  const M = METRICS[detail.type], s = chart.series, h = cache[key(cities[current])].hourly, hi = detail.idx[i];
+  const xx = chart.x(i), yy = chart.y(s[0].v[i]);
   const l = $("mkl"), c = $("mkc");
   l.setAttribute("x1", xx); l.setAttribute("x2", xx); l.setAttribute("opacity", ".7");
   c.setAttribute("cx", xx); c.setAttribute("cy", yy); c.setAttribute("opacity", "1");
-  const t = h.time[detail.idx[i]].slice(11, 16);
-  if (detail.wind) {
-    $("dval").textContent = `${r(s0.v[i])} м/с`;
-    $("dsub").textContent = `${t} · порывы ${r(chart.series[1].v[i])} м/с · ${dirText(h.wind_direction_10m[detail.idx[i]])} · ${beaufort(s0.v[i])}`;
-  } else {
-    $("dval").textContent = `${s0.v[i].toFixed(1)} мм рт. ст.`;
-    $("dsub").textContent = `${t} · ${r(s0.v[i] / 0.750062)} гПа`;
-  }
+  $("dval").textContent = M.val(s, i, h, hi);
+  $("dsub").textContent = `${h.time[hi].slice(11, 16)} · ${M.sub(s, i, h, hi)}`;
 }
 
 function scrub(e) {
@@ -475,12 +554,16 @@ function scrub(e) {
 $("detail").addEventListener("click", e => {
   if (e.target.closest("#dclose")) return closeDetail();
   const tb = e.target.closest("[data-day]");
-  if (tb) { detail.day = +tb.dataset.day; renderDetail(); }
+  if (tb) { detail.day = +tb.dataset.day; renderDetail(); return; }
+  const mt = e.target.closest("[data-metric]");
+  if (mt) { detail.type = mt.dataset.metric; renderDetail(); }
 });
 $("detail").addEventListener("pointerdown", e => { if (e.target.closest("#cbox")) scrub(e); });
 $("detail").addEventListener("pointermove", e => { if (e.target.closest("#cbox") && (e.buttons || e.pointerType === "touch")) scrub(e); });
 $("detail").addEventListener("touchmove", e => { if (e.target.closest("#cbox")) scrub(e.touches[0]); }, { passive: true });
 $("pages").addEventListener("click", e => {
+  const od = e.target.closest("[data-open-day]");
+  if (od) return openDetail("temp", +od.dataset.openDay);
   const t = e.target.closest("[data-detail]");
   if (t) openDetail(t.dataset.detail);
 });

@@ -52,7 +52,8 @@
     font-size: 12px; text-transform: uppercase; opacity: .65; font-weight: 600;
     padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,.2); margin-bottom: 10px;
   }
-  .hourly { display: flex; overflow-x: auto; gap: 22px; scrollbar-width: none; }
+  .hourly { display: flex; overflow-x: auto; gap: 22px; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; scroll-padding-inline: 16px; }
+  .hourly::after { content: ""; flex: 0 0 1px; }
   .hourly::-webkit-scrollbar { display: none; }
   .hour { display: flex; flex-direction: column; align-items: center; gap: 10px; flex: 0 0 auto; min-width: 40px; font-weight: 500; }
   .hour .ic { font-size: 24px; }
@@ -81,7 +82,8 @@
   .dots { display: flex; gap: 7px; }
   .dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.4); }
   .dots i.on { background: #fff; }
-  .spin { animation: spin 1s linear infinite; display: inline-block; }
+  .bottom button svg { width: 26px; height: 26px; display: block; margin: 0 auto; }
+  .spin { animation: spin 1s linear infinite; transform-box: view-box; transform-origin: 12px 12px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
   #list {
@@ -181,7 +183,7 @@
 <div id="pages"></div>
 
 <div class="bottom">
-  <button id="refreshBtn" title="Обновить">↻</button>
+  <button id="refreshBtn" title="Обновить" aria-label="Обновить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4.5h-4.5"/></g></svg></button>
   <div class="dots" id="dots"></div>
   <button id="listBtn" title="Города">☰</button>
 </div>
@@ -678,8 +680,9 @@ $("pages").addEventListener("scroll", () => {
   if (i !== current) { current = i; updateTheme(); }
 });
 
+const REFRESH_ICON = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><g><path d=\"M20 12a8 8 0 1 1-2.34-5.66\"/><path d=\"M20 4v4.5h-4.5\"/></g></svg>";
 async function loadAll() {
-  $("refreshBtn").innerHTML = '<span class="spin">↻</span>';
+  $("refreshBtn").innerHTML = REFRESH_ICON.replace('<g>', '<g class="spin">');
   await Promise.all(cities.map(async c => {
     try {
       const d = await getWeather(c);
@@ -700,7 +703,7 @@ async function loadAll() {
   renderList();
   updateTheme();
   if (detail) { const keepDay = detail.day; renderDetail(); if (detail) detail.day = keepDay; }
-  $("refreshBtn").textContent = "↻";
+  $("refreshBtn").innerHTML = REFRESH_ICON;
 }
 
 async function addCity(c) {

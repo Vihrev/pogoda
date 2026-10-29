@@ -1,8 +1,10 @@
 {
+  "id": "./",
   "name": "Погода",
   "short_name": "Погода",
-  "description": "Прогноз погоды в стиле iPhone с графиками ветра и давления",
+  "description": "Прогноз погоды с графиками ветра, давления, влажности и осадков",
   "lang": "ru",
+  "dir": "ltr",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -10,8 +12,9 @@
   "background_color": "#2f6fb5",
   "theme_color": "#2f6fb5",
   "icons": [
-    { "src": "weather-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

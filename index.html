@@ -15,6 +15,9 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; overflow: hidden; }
+  /* фон под системными панелями телефона: цвет нижней точки градиента текущей погоды */
+  html { background: #6aa3d8; transition: background 0.8s; }
+  body { min-height: 100dvh; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
     color: #fff; background: linear-gradient(180deg, #2f6fb5 0%, #6aa3d8 100%);
@@ -26,7 +29,7 @@
   body.snow   { background: linear-gradient(180deg, #7d8fa6 0%, #b9c6d4 100%); }
 
   #pages {
-    display: flex; height: calc(100% - 56px); overflow-x: auto; overflow-y: hidden;
+    display: flex; height: calc(100% - 56px - env(safe-area-inset-bottom)); overflow-x: auto; overflow-y: hidden;
     scroll-snap-type: x mandatory; scrollbar-width: none;
   }
   #pages::-webkit-scrollbar { display: none; }
@@ -70,7 +73,7 @@
   .loading { text-align: center; margin-top: 35vh; font-size: 18px; opacity: .8; }
 
   .bottom {
-    position: fixed; left: 0; right: 0; bottom: 0; height: 56px; padding-bottom: env(safe-area-inset-bottom);
+    position: fixed; left: 0; right: 0; bottom: 0; height: calc(56px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
     display: flex; align-items: center; justify-content: space-between; padding-inline: 18px;
     background: rgba(0,0,0,.18); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
   }
@@ -656,7 +659,9 @@ function updateTheme() {
   const c = cities[current];
   document.body.className = c ? themeOf(cache[key(c)]) : "";
   const colors = { "": "#2f6fb5", night: "#0b1026", cloudy: "#5b6b7d", rain: "#3a4a5c", snow: "#7d8fa6" };
+  const bottoms = { "": "#6aa3d8", night: "#2b3a67", cloudy: "#9aa7b5", rain: "#66788a", snow: "#b9c6d4" };
   document.querySelector('meta[name="theme-color"]').content = colors[document.body.className] || "#2f6fb5";
+  document.documentElement.style.background = bottoms[document.body.className] || "#6aa3d8";
   document.querySelectorAll("#dots i").forEach((el, i) => el.classList.toggle("on", i === current));
 }
 

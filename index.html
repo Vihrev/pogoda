@@ -167,6 +167,9 @@
   }
   .chips button.on { background: #0a84ff; }
   .day.tap { border-radius: 8px; }
+  .card.tap:has(.hourly):active { transform: none; }
+  .hour { cursor: pointer; border-radius: 10px; padding: 2px 0; }
+  .hour:active { background: rgba(255,255,255,.12); }
   .day.tap:active { background: rgba(255,255,255,.08); transform: none; }
 </style>
 </head>
@@ -258,7 +261,7 @@ function pageHtml(d, c) {
   let hours = "";
   for (let i = start; i < start + 24 && i < h.time.length; i++) {
     const label = i === start ? "Сейчас" : h.time[i].slice(11, 13);
-    hours += `<div class="hour"><div>${label}</div><div class="ic">${info(h.weather_code[i], h.is_day[i]).icon}</div><div>${r(h.temperature_2m[i])}°</div></div>`;
+    hours += `<div class="hour" data-hour="${i}"><div>${label}</div><div class="ic">${info(h.weather_code[i], h.is_day[i]).icon}</div><div>${r(h.temperature_2m[i])}°</div></div>`;
   }
 
   const gMin = Math.min(...dl.temperature_2m_min), gMax = Math.max(...dl.temperature_2m_max);
@@ -294,8 +297,8 @@ function pageHtml(d, c) {
       <div class="desc">${now.text}</div>
       <div class="hilo">Макс.: ${r(dl.temperature_2m_max[0])}°, мин.: ${r(dl.temperature_2m_min[0])}°</div>
     </div>
-    <div class="card">
-      <div class="card-title">🕒 Почасовой прогноз · Восход ${tm(dl.sunrise[0])}, закат ${tm(dl.sunset[0])}</div>
+    <div class="card tap" data-detail="temp">
+      <div class="card-title">🕒 Почасовой прогноз › · Восход ${tm(dl.sunrise[0])}, закат ${tm(dl.sunset[0])}</div>
       <div class="hourly">${hours}</div>
     </div>
     <div class="card">
@@ -399,8 +402,8 @@ function bigChart(series, opt) {
   return `<svg id="bigsvg" viewBox="0 0 ${W} ${H}">${s}</svg>`;
 }
 
-function openDetail(type, day = 0) {
-  detail = { type, day };
+function openDetail(type, day = 0, hour = null) {
+  detail = { type, day, hour };
   renderDetail();
   $("detail").classList.add("open");
   history.pushState({ detail: 1 }, "");
@@ -525,7 +528,9 @@ function renderDetail() {
     <div class="dcard"><h3>Весь день</h3>${overview}</div>
     <div class="hint">Проведите пальцем по графику, чтобы увидеть значение в любой час</div>`;
   detail.idx = idx;
-  showPoint(nowIdx >= 0 ? nowIdx : 12);
+  const focus = detail.hour != null ? idx.indexOf(detail.hour) : -1;
+  detail.hour = null;
+  showPoint(focus >= 0 ? focus : nowIdx >= 0 ? nowIdx : 12);
   $("detail").querySelector(".tabs .on")?.scrollIntoView({ inline: "center", block: "nearest" });
   $("detail").querySelector(".chips .on")?.scrollIntoView({ inline: "center", block: "nearest" });
 }
@@ -562,6 +567,12 @@ $("detail").addEventListener("pointerdown", e => { if (e.target.closest("#cbox")
 $("detail").addEventListener("pointermove", e => { if (e.target.closest("#cbox") && (e.buttons || e.pointerType === "touch")) scrub(e); });
 $("detail").addEventListener("touchmove", e => { if (e.target.closest("#cbox")) scrub(e.touches[0]); }, { passive: true });
 $("pages").addEventListener("click", e => {
+  const hr = e.target.closest("[data-hour]");
+  if (hr) {
+    const d = cache[key(cities[current])], hi = +hr.dataset.hour;
+    const day = d ? Math.max(0, d.daily.time.indexOf(d.hourly.time[hi].slice(0, 10))) : 0;
+    return openDetail("temp", day, hi);
+  }
   const od = e.target.closest("[data-open-day]");
   if (od) return openDetail("temp", +od.dataset.openDay);
   const t = e.target.closest("[data-detail]");

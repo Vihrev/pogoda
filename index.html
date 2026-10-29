@@ -246,13 +246,60 @@ async function fetchWeather(c) {
     `&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,precipitation_probability,uv_index,weather_code,is_day,wind_speed_10m,wind_gusts_10m,wind_direction_10m,surface_pressure` +
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,sunrise,sunset,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max` +
     `&timezone=auto&forecast_days=10&wind_speed_unit=ms`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("HTTP " + res.status);
-  return res.json();
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 7000);
+  try {
+    const res = await fetch(url, { signal: ctl.signal });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return await res.json();
+  } finally { clearTimeout(t); }
+}
+
+// ===== Запасной источник: прогноз, который GitHub раз в час кладёт в data/weather.json =====
+// Нужен, когда api.open-meteo.com недоступен у провайдера, а сам сайт открывается.
+let directDown = false, mirror = null, mirrorAt = 0;
+const failed = {};
+async function getMirror() {
+  if (mirror && Date.now() - mirrorAt < 60000) return mirror;
+  const res = await fetch("data/weather.json?t=" + Date.now());
+  if (!res.ok) throw new Error("mirror HTTP " + res.status);
+  mirror = await res.json(); mirrorAt = Date.now();
+  return mirror;
+}
+const distKm = (a, b) => {
+  const R = 6371, rad = x => x * Math.PI / 180, dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
+async function fetchMirror(c) {
+  const m = await getMirror();
+  let best = null, bd = Infinity;
+  m.items.forEach(x => { const dd = distKm(c, x); if (dd < bd) { bd = dd; best = x; } });
+  if (!best || bd > 40) throw new Error("not-in-list");
+  const d = JSON.parse(JSON.stringify(best.data));
+  // «Сейчас» берём из почасового прогноза на текущий час города: файл обновляется раз в час
+  const nowLocal = new Date(Date.now() + d.utc_offset_seconds * 1000).toISOString().slice(0, 13);
+  const i = d.hourly.time.findIndex(t => t.slice(0, 13) === nowLocal);
+  if (i >= 0) {
+    ["temperature_2m", "apparent_temperature", "relative_humidity_2m", "weather_code", "is_day", "wind_speed_10m",
+     "wind_gusts_10m", "wind_direction_10m", "surface_pressure", "precipitation"].forEach(f => { d.current[f] = d.hourly[f][i]; });
+    d.current.time = d.hourly.time[i];
+  }
+  d._mirror = true;
+  d._fetched = Date.parse(m.updated);
+  return d;
+}
+async function getWeather(c) {
+  if (!directDown) {
+    try { return await fetchWeather(c); } catch (e) { directDown = true; }
+  }
+  return fetchMirror(c);
 }
 
 function pageHtml(d, c) {
-  if (!d) return `<div class="loading">Загрузка…</div>`;
+  if (!d) return failed[key(c)] === "not-in-list"
+    ? `<div class="loading">${esc(c.name)}<br><br><span style="font-size:15px">Сервис погоды сейчас недоступен напрямую, а этого города нет в списке, который обновляется через GitHub. Его можно добавить в список.</span></div>`
+    : failed[key(c)] ? `<div class="loading">Нет соединения.<br><span style="font-size:15px">Нажмите ↻, чтобы повторить.</span></div>`
+    : `<div class="loading">Загрузка…</div>`;
   const cur = d.current, dl = d.daily, h = d.hourly;
   const now = info(cur.weather_code, cur.is_day);
 
@@ -335,7 +382,7 @@ function pageHtml(d, c) {
       <div class="card tap" data-detail="precip"><div class="card-title">🌧️ Осадки ›</div><div class="big">${cur.precipitation} мм</div>
         <div class="note">За последний час.</div></div>
     </div>
-    <div class="updated">Обновлено в ${upd}</div>
+    <div class="updated">Обновлено в ${upd}${d._mirror ? " · через GitHub" : ""}</div>
   </div>`;
 }
 
@@ -628,10 +675,11 @@ async function loadAll() {
   $("refreshBtn").innerHTML = '<span class="spin">↻</span>';
   await Promise.all(cities.map(async c => {
     try {
-      const d = await fetchWeather(c);
-      d._fetched = Date.now();
+      const d = await getWeather(c);
+      if (!d._fetched) d._fetched = Date.now();
       cache[key(c)] = d;
-    } catch (e) { /* остаются старые данные из кэша */ }
+      delete failed[key(c)];
+    } catch (e) { failed[key(c)] = e.message; /* остаются старые данные из кэша */ }
   }));
   const keep = {};
   cities.forEach(c => { if (cache[key(c)]) keep[key(c)] = cache[key(c)]; });
@@ -669,11 +717,20 @@ $("q").addEventListener("input", e => {
   if (v.length < 2) { $("results").innerHTML = ""; return; }
   timer = setTimeout(async () => {
     try {
-      const j = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(v)}&count=7&language=ru`)).json();
-      const res = j.results || [];
+      let res, fromList = false;
+      try {
+        const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 6000);
+        const j = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(v)}&count=7&language=ru`, { signal: ctl.signal })).json();
+        clearTimeout(t);
+        res = j.results || [];
+      } catch {
+        // поиск в интернете недоступен: ищем среди городов, которые обновляются через GitHub
+        const m = await getMirror(); fromList = true;
+        res = m.items.filter(x => x.name.toLowerCase().includes(v.toLowerCase())).map(x => ({ name: x.name, latitude: x.lat, longitude: x.lon, admin1: "из списка обновления" }));
+      }
       $("results").innerHTML = res.length
         ? res.map((g, i) => `<div data-g="${i}">${esc(g.name)} <small>${esc([g.admin1, g.country].filter(Boolean).join(", "))}</small></div>`).join("")
-        : `<div style="opacity:.6">Ничего не найдено</div>`;
+        : `<div style="opacity:.6">${fromList ? "Поиск в интернете недоступен, а в списке обновления такого города нет" : "Ничего не найдено"}</div>`;
       $("results").querySelectorAll("[data-g]").forEach(el => el.onclick = () => {
         const g = res[+el.dataset.g];
         $("q").value = ""; $("results").innerHTML = "";
@@ -731,7 +788,7 @@ $("cityList").addEventListener("click", e => {
   if (item && !$("list").classList.contains("edit")) { closeList(); goTo(+item.dataset.i, false); }
 });
 
-$("refreshBtn").onclick = loadAll;
+$("refreshBtn").onclick = () => { directDown = false; loadAll(); };
 
 // Автообновление: каждые 10 минут и при возврате в приложение
 setInterval(loadAll, 10 * 60 * 1000);

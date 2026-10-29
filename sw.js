@@ -1,5 +1,5 @@
 // Service Worker: даёт установить приложение и открывать его без интернета
-const CACHE = "weather-v6";
+const CACHE = "weather-v7";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./weather-icon.svg", "./icon-180.png"];
 
 self.addEventListener("install", e => {

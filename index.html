@@ -254,13 +254,13 @@ async function fetchWeather(c) {
   } finally { clearTimeout(t); }
 }
 
-// ===== Запасной источник: прогноз, который GitHub раз в час кладёт в data/weather.json =====
+// ===== Запасной источник: прогноз, который GitHub раз в час кладёт в data/w/<город>.json =====
 // Нужен, когда api.open-meteo.com недоступен у провайдера, а сам сайт открывается.
 let directDown = false, mirror = null, mirrorAt = 0;
 const failed = {};
 async function getMirror() {
   if (mirror && Date.now() - mirrorAt < 60000) return mirror;
-  const res = await fetch("data/weather.json?t=" + Date.now());
+  const res = await fetch("data/index.json?t=" + Date.now());
   if (!res.ok) throw new Error("mirror HTTP " + res.status);
   mirror = await res.json(); mirrorAt = Date.now();
   return mirror;
@@ -273,9 +273,11 @@ const distKm = (a, b) => {
 async function fetchMirror(c) {
   const m = await getMirror();
   let best = null, bd = Infinity;
-  m.items.forEach(x => { const dd = distKm(c, x); if (dd < bd) { bd = dd; best = x; } });
+  m.cities.forEach(x => { const dd = distKm(c, x); if (dd < bd) { bd = dd; best = x; } });
   if (!best || bd > 40) throw new Error("not-in-list");
-  const d = JSON.parse(JSON.stringify(best.data));
+  const res = await fetch(`data/w/${best.id}.json?t=` + Math.floor(Date.now() / 600000));
+  if (!res.ok) throw new Error("mirror HTTP " + res.status);
+  const d = await res.json();
   // «Сейчас» берём из почасового прогноза на текущий час города: файл обновляется раз в час
   const nowLocal = new Date(Date.now() + d.utc_offset_seconds * 1000).toISOString().slice(0, 13);
   const i = d.hourly.time.findIndex(t => t.slice(0, 13) === nowLocal);
@@ -726,7 +728,8 @@ $("q").addEventListener("input", e => {
       } catch {
         // поиск в интернете недоступен: ищем среди городов, которые обновляются через GitHub
         const m = await getMirror(); fromList = true;
-        res = m.items.filter(x => x.name.toLowerCase().includes(v.toLowerCase())).map(x => ({ name: x.name, latitude: x.lat, longitude: x.lon, admin1: "из списка обновления" }));
+        const nv = v.toLowerCase().replace(/ё/g, "е");
+        res = m.cities.filter(x => x.name.toLowerCase().replace(/ё/g, "е").includes(nv)).slice(0, 10).map(x => ({ name: x.name, latitude: x.lat, longitude: x.lon, admin1: x.region }));
       }
       $("results").innerHTML = res.length
         ? res.map((g, i) => `<div data-g="${i}">${esc(g.name)} <small>${esc([g.admin1, g.country].filter(Boolean).join(", "))}</small></div>`).join("")
